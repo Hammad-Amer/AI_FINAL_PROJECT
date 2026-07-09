@@ -102,41 +102,6 @@ class Driver(object):
             
             self.model_loaded = False
             self.ai_mode = False
-    
-    def gear(self, accel, brake):
-            rpm   = self.state.getRpm()
-            gear  = self.state.getGear()
-            speed = self.state.getSpeedX()
-
-            # 1) Engage reverse if stopped + brake held >0.8 for 0.5s
-            if speed < 1.0 and brake > 0.8:
-                if self.reverse_request_time is None:
-                    self.reverse_request_time = time.time()
-                elif time.time() - self.reverse_request_time > 0.5:
-                    gear = -1
-                    self.in_reverse = True
-            else:
-                self.reverse_request_time = None
-
-            if self.in_reverse:
-                if accel > 0.5:
-                    gear = 1
-                    self.in_reverse = False
-                else:
-                    gear = -1
-
-            elif not self.in_reverse:
-                if gear == 0:
-                    gear = 1
-                elif rpm > 8300 and gear < 6: #8300,6500
-                    gear += 1
-                elif rpm < 4500 and gear > 1: #4500,3200
-                    gear -= 1
-
-            self.control.setGear(gear)
-            self.old_rpm = rpm
-
-
 
     def handle_controls_AI(self):
         try:
@@ -218,71 +183,6 @@ class Driver(object):
             self.ai_mode = False
             self.input_keyboard()
 
-
-    def handle_controls_AI1(self):
-        
-        try:
-            global count
-            count = 0
-            gear = self.control.getGear()
-            rpm = self.state.getRpm()
-            speed = self.state.getSpeedX()
-            distRaced = self.state.getDistRaced()
-            if rpm >= 8300 and gear < 6:
-                gear += 1
-                count = 0
-            elif rpm <= 4500 and gear > 1:
-                gear -= 1
-                count = 0
-            if int(distRaced) > 2 and speed < 4:
-                count += 1
-            if 20 <= count < 1200 * 3:
-                gear = -1
-                count += 1
-            if count >= 1200 * 3:
-                gear = 1
-                count = 0
-
-
-            self.control.setGear(gear)
-
-            with warnings.catch_warnings():
-                warnings.filterwarnings("ignore", category=UserWarning, message="X does not have valid feature names")
-                scaled_state = self.model_prepare().astype(np.float32)
-       
-            
-            self.tflite_interpreter.set_tensor(self.tflite_input_details[0]['index'], scaled_state)
-
-            self.tflite_interpreter.invoke()
-
-            start_time = time.time()
-            predictions = self.tflite_interpreter.get_tensor(self.tflite_output_details[0]['index'])[0]
-            end_time = time.time()
-
-            acceleration = float(predictions[0])  
-            brake = float(predictions[1])        
-            clutch = float(predictions[2])        
-            steering = float(predictions[3])      
-            
-            acceleration = max(0.0, min(1.0, acceleration))
-            brake = max(0.0, min(1.0, brake))
-            clutch = max(0.0, min(1.0, clutch))
-            steering = max(-1.0, min(1.0, steering))
-            
-            self.control.setAccel(acceleration)
-            self.control.setBrake(brake)
-            self.control.setSteer(steering)
-            self.control.setClutch(clutch) 
-            
-            if speed < 13:
-                acceleration=1
-                self.control.setAccel(acceleration)
-
-
-        except Exception as e:
-            self.ai_mode = False
-            self.input_keyboard()
-    
     def init(self):
         
         self.angles = [0 for x in range(19)]
